@@ -1,0 +1,39 @@
+2014-09-04
+add logo MTD partition, switch logo size via CONFIG_LCD_SIZE_X
+2014-04-25 
+video driver is well now.
+2014-04-24
+video
+2014-04-23
+lcd
+2014-04-14
+ok210p nand flash samsung K9F4G08U0D
+2014-04-01
+ok210p nand flash samsung K9K8G08U0E 
+2014-02-12
+ok210p
+2013-05-24
+dram parameter change.
+2013-05-20
+public version
+2013-03-06
+sdcard load and brun files to nand flash easyly.forlinx.bs 
+2013-02-07
+brun files 5M to kernel forlinx.bs
+2013-01-28
+remove the problem of android2.d 2g nandflash bug .forlinx.bs
+2013-01-22
+remove flashall linux read ramdis.img bug.bs
+2013-01-10
+chang android image to one image partion.bs
+2012-11-27
+Support Android4.0 and Linux2.6.35 burn and run system ,they have not same config,one is "make forlinx_linux_config" ,the other is "make forlinx_android_config" .Note:Android2.3 use linux config ,it is temp.
+
+2012-11-23
+1 Add MT29F8G08ABABAWP nandflash support,it is 8 bit hardware ecc.
+2 uboot put on  200M address of DRAM offset ,so support dnw larger files to memory,before it is offset 62M .
+
+
+2012-08-17
+1 burn files: kernel.img to zImage,system.img to rootfs.yaffs2
+2 Linux System :make burn sdcard OK

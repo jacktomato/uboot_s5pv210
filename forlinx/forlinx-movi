@@ -1,0 +1,33 @@
+#!/bin/sh
+
+if [ -e  ./u-boot-210.bin ]; then
+	rm u-boot-210.bin
+fi
+if [ -e  ./mmc-210.bin ]; then
+	rm mmc-210.bin
+fi
+
+cp ../u-boot.bin  ./
+mv u-boot.bin  u-boot-210.bin
+rm temp/ -rf
+mkdir temp
+echo "BL1 fusing"
+./mkbl1 u-boot-210.bin SD-bl1-8k.bin 8192
+cp SD-bl1-8k.bin temp/
+rm SD-bl1-8k.bin
+cp u-boot-210.bin temp/
+cd temp
+cat SD-bl1-8k.bin >> temp
+cat SD-bl1-8k.bin >> temp
+cat SD-bl1-8k.bin >> temp
+
+split -b 24k temp
+cat xaa >> mmc-210.bin
+rm xaa
+cat u-boot-210.bin >> tem
+cat u-boot-210.bin >> tem
+split -b 500k tem
+cat xaa >> mmc-210.bin
+cp mmc-210.bin ../
+cd ../
+rm -r temp

@@ -1,0 +1,133 @@
+#!/bin/bash
+# Forlinx SD Writer tool
+# created by jhk,
+LC_ALL="C"
+SDCARD=$1
+BOARD=$2
+
+FILEFOLD=sdfuse
+MMC=mmc-210.bin
+BOOT=u-boot-210.bin
+KERNEL_210=zImage-210
+ROOTFS=rootfs-210.yaffs2
+#ANDROID_210=android_ics.tgz
+
+echo "SD Card Writer program V1.0"
+echo "Create by forlinx"
+echo "http://www.forlinx.com"
+
+if [ -b "$SDCARD" ]; then
+
+# Check SDCARD Sectors
+SDCARD_SECTORS=`fdisk -l -u $SDCARD | grep sectors | head -n 1 \
+| cut -d',' -f4 | cut -d' ' -f3`
+
+OFFSET_BL1_210=1
+
+
+FL210_FREE=20480
+SIZE_FAT=$(($SDCARD_SECTORS-$FL210_FREE-$FL210_FREE-2))
+
+OFFSET_FAT=$(($SIZE_FAT-1))
+#end reserved block 1 (512byte)
+
+# Ask for correct calculation
+echo "SDCARD-device:$SDCARD"
+echo "NSectors:$SDCARD_SECTORS, Confirm your sdcard device is $SDCARD ? Do you want to continue(yes/no): "
+read ANS
+if [ "$ANS" != "yes" ]; then
+    exit -1
+fi
+
+print_success()
+{
+    if [ "$1" == 0 ]; then
+	echo "success"
+    else
+	echo "failed"
+	exit -1
+    fi
+}
+
+partition_add()
+{
+    echo n
+    echo p
+    echo $1
+    echo $2
+    echo +$3
+}
+
+sdcard_format()
+{
+    START_FAT=20480
+
+# Pre Umount 
+    umount /media/*
+
+    (
+
+# Pre Partition Delete
+	echo d
+	echo 6
+	echo d
+	echo 5
+	echo d
+	echo 4
+	echo d
+	echo 3
+	echo d
+	echo 2
+	echo d
+
+# Partition Create
+	partition_add 1 $START_FAT $OFFSET_FAT
+	
+	echo w
+	echo q
+    ) | fdisk -u $SDCARD > /dev/null 2>&1
+
+# Partition Format
+    mkfs.vfat -n "Forlinx" "$SDCARD"1 > /dev/null 2>&1
+  
+}
+
+echo
+echo  "Partition Create ,Please wait...... "
+sdcard_format
+print_success "$?"
+#size 1M
+dd bs=512 seek=$OFFSET_BL1_210 if=/dev/zero of=$SDCARD count=2048 > /dev/null 2>&1
+echo
+echo  "flusing $MMC"
+dd bs=512 seek=$OFFSET_BL1_210 if=$MMC of=$SDCARD > /dev/null 2>&1
+print_success "$?"
+
+mkdir temp
+mount "$SDCARD"1 temp
+cd temp
+mkdir $FILEFOLD
+
+echo "copy $BOOT"
+cp ../$BOOT  $FILEFOLD > /dev/null 2>&1
+print_success "$?"
+
+echo "copy $KERNEL_210"
+cp ../$KERNEL_210 $FILEFOLD > /dev/null 2>&1
+print_success "$?"
+
+echo "copy $ROOTFS"
+cp ../$ROOTFS $FILEFOLD > /dev/null 2>&1
+print_success "$?"
+cd ..
+umount temp
+rm -rf  temp
+
+echo "make boot sdcard OK."
+else
+    echo "Usage: $0 device"
+    echo "ex) $0 sdb"
+    echo "make  boot sdcard  fail."
+    exit 1
+fi
+
