@@ -586,6 +586,7 @@ static void smc911x_reset(void)
 
 static void smc911x_enable(void)
 {
+#if 0
 	/* Enable TX */
 	reg_write(HW_CFG, 8 << 16 | HW_CFG_SF);
 
@@ -597,6 +598,21 @@ static void smc911x_enable(void)
 	reg_write(RX_CFG, 0);
 
 	smc911x_set_mac_csr(MAC_CR, MAC_CR_TXEN | MAC_CR_RXEN | MAC_CR_HBDIS);
+#else
+	/* Enable TX */
+	reg_write( HW_CFG, 8 << 16 | HW_CFG_SF);
+
+	reg_write( GPT_CFG, GPT_CFG_TIMER_EN | 10000);
+
+	reg_write( TX_CFG, TX_CFG_TX_ON);
+
+	/* no padding to start of packets */
+	reg_write( RX_CFG, 0);
+
+	smc911x_set_mac_csr( MAC_CR, MAC_CR_TXEN | MAC_CR_RXEN |
+				MAC_CR_HBDIS);
+
+#endif
 
 }
 
@@ -710,12 +726,36 @@ int eth_rx(void)
 
 #ifdef CONFIG_NET_MULTI
 
+static void smc911x_handle_mac_address(struct eth_device *dev)
+{
+	unsigned long addrh, addrl;
+	uchar *m = dev->enetaddr;
+
+	addrl = m[0] | (m[1] << 8) | (m[2] << 16) | (m[3] << 24);
+	addrh = m[4] | (m[5] << 8);
+	smc911x_set_mac_csr(dev, ADDRL, addrl);
+	smc911x_set_mac_csr(dev, ADDRH, addrh);
+
+	printf(DRIVERNAME ": MAC %pM\n", m);
+}
+
 static int smc911x_eth_init(struct eth_device* dev, bd_t* bis)
 {
-	if (smc_eth_init(bis)) {
-		return 0;
-	}
-	return 1;
+	struct chip_id *id = dev->priv;
+
+	printf(DRIVERNAME ": detected %s controller\n", id->name);
+
+	smc911x_reset(dev);
+
+	/* Configure the PHY, initialize the link state */
+	smc911x_phy_configure(dev);
+
+	smc911x_handle_mac_address(dev);
+
+	/* Turn on Tx + Rx */
+	smc911x_enable(dev);
+
+	return 0;
 }
 
 static void smc911x_eth_halt (struct eth_device *dev)
@@ -726,15 +766,78 @@ static void smc911x_eth_halt (struct eth_device *dev)
 
 static int smc911x_eth_send (struct eth_device *dev, volatile void *packet, int length)
 {
+#if 0
 	if (smc_eth_send(packet, length)) {
 		return 0;
 	}
 	return length;
+#endif
+	u32 *data = (u32*)packet;
+	u32 tmplen;
+	u32 status;
+
+	reg_write(TX_DATA_FIFO, TX_CMD_A_INT_FIRST_SEG |
+				TX_CMD_A_INT_LAST_SEG | length);
+	reg_write(TX_DATA_FIFO, length);
+
+	tmplen = (length + 3) / 4;
+
+#if 0
+	while (tmplen--)//what is this for? comment temporarily,Jack
+		pkt_data_push(dev, TX_DATA_FIFO, *data++);
+#endif
+	/* wait for transmission */
+	while (!((reg_read( TX_FIFO_INF) &
+					TX_FIFO_INF_TSUSED) >> 16));
+
+	/* get status. Ignore 'no carrier' error, it has no meaning for
+	 * full duplex operation
+	 */
+	status = reg_read( TX_STATUS_FIFO) &
+			(TX_STS_LOC | TX_STS_LATE_COLL | TX_STS_MANY_COLL |
+			TX_STS_MANY_DEFER | TX_STS_UNDERRUN);
+
+	if (!status)
+		return 0;
+
+	printf(DRIVERNAME ": failed to send packet: %s%s%s%s%s\n",
+		status & TX_STS_LOC ? "TX_STS_LOC " : "",
+		status & TX_STS_LATE_COLL ? "TX_STS_LATE_COLL " : "",
+		status & TX_STS_MANY_COLL ? "TX_STS_MANY_COLL " : "",
+		status & TX_STS_MANY_DEFER ? "TX_STS_MANY_DEFER " : "",
+		status & TX_STS_UNDERRUN ? "TX_STS_UNDERRUN" : "");
+
+	return -1;
 }
 
 static int smc911x_eth_rx (struct eth_device *dev)
 {
-       return smc_eth_rx();
+       //return smc_eth_rx();
+       	u32 *data = (u32 *)NetRxPackets[0];
+	u32 pktlen, tmplen;
+	u32 status;
+
+	if ((reg_read( RX_FIFO_INF) & RX_FIFO_INF_RXSUSED) >> 16) {
+		status =reg_read( RX_STATUS_FIFO);
+		pktlen = (status & RX_STS_PKT_LEN) >> 16;
+
+		reg_write( RX_CFG, 0);
+
+		tmplen = (pktlen + 3) / 4;
+#if 0		
+		while (tmplen--)//comment temporarily by Jack
+			*data++ = pkt_data_pull(dev, RX_DATA_FIFO);
+#endif
+		if (status & RX_STS_ES)
+			printf(DRIVERNAME
+				": dropped bad packet. Status: 0x%08x\n",
+				status);
+		else
+			NetReceive(NetRxPackets[0], pktlen);
+	}
+
+	return 0;
+
 }
 
 /*
@@ -743,6 +846,7 @@ static int smc911x_eth_rx (struct eth_device *dev)
  */
 int smc911x_initialize (bd_t * bis)
 {
+#if 0
 	struct eth_device *dev;
 	int i, val = 0;
 
@@ -773,6 +877,42 @@ int smc911x_initialize (bd_t * bis)
 	dev->recv = smc911x_eth_rx;
 
 	eth_register (dev);
+#endif
+	unsigned long addrl, addrh;
+	struct eth_device *dev;
+
+	dev = malloc(sizeof(*dev));
+	if (!dev) {
+		return -1;
+	}
+	memset(dev, 0, sizeof(*dev));
+
+	dev->iobase = CONFIG_DRIVER_SMC911X_BASE;
+
+	/* Try to detect chip. Will fail if not present. */
+	if (smc911x_detect_chip(dev)) {
+		free(dev);
+		return 0;
+	}
+
+	addrh = smc911x_get_mac_csr(dev, ADDRH);
+	addrl = smc911x_get_mac_csr(dev, ADDRL);
+	if (!(addrl == 0xffffffff && addrh == 0x0000ffff)) {
+		/* address is obtained from optional eeprom */
+		dev->enetaddr[0] = addrl;
+		dev->enetaddr[1] = addrl >>  8;
+		dev->enetaddr[2] = addrl >> 16;
+		dev->enetaddr[3] = addrl >> 24;
+		dev->enetaddr[4] = addrh;
+		dev->enetaddr[5] = addrh >> 8;
+	}
+	dev->init = smc911x_eth_init;
+	dev->halt = smc911x_eth_halt;
+	dev->send = smc911x_eth_send;
+	dev->recv = smc911x_eth_rx;
+	sprintf(dev->name, "%s-%hu", DRIVERNAME, 0);
+
+	eth_register(dev);
 
 	return 0;
 }

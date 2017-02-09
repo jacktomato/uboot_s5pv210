@@ -118,13 +118,20 @@
 /*
  * Hardware drivers
  */
- 
+#if 1
+#define CONFIG_DRIVER_SMC911X	1	/* we have a SMC9115 on-board */
+#define CONFIG_DRIVER_SMC911X_16_BIT
+#define CONFIG_DRIVER_SMC911X_BASE	0xa8000000
+
+ #else
 #define CONFIG_DRIVER_DM9000    1
 #define CONFIG_DM9000_BASE      (0x88000300)
 #define CONFIG_DM9000_USE_16BIT
 #define DM9000_IO               CONFIG_DM9000_BASE
 #define DM9000_DATA             (CONFIG_DM9000_BASE+0x4) 
 #define DM9000_16BIT_DATA
+#endif
+
 /* 
 #define CONFIG_DM9000_USE_16BIT 
  
